@@ -1,0 +1,724 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{fontspec}
+\usepackage{polyglossia}
+\setdefaultlanguage{vietnamese}
+\setmainfont{TeX Gyre Termes}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{hyperref}
+\usepackage{xurl}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{setspace}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  urlcolor=blue!60!black,
+  citecolor=blue!50!black
+}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.5em}
+\onehalfspacing
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{Báo cáo dự án hệ gợi ý phim}
+\fancyhead[R]{MovieLens 1M}
+\fancyfoot[C]{\thepage}
+
+\titleformat{\section}{\large\bfseries}{\thesection.}{0.5em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection.}{0.5em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries}{\thesubsubsection.}{0.5em}{}
+
+\begin{document}
+
+\begin{titlepage}
+    \centering
+    {\Large BÁO CÁO DỰ ÁN \par}
+    \vspace{1cm}
+    {\LARGE\bfseries Xây dựng hệ gợi ý phim dựa trên MovieLens 1M\par}
+    \vspace{0.5cm}
+    {\Large So sánh Matrix Factorization và NeuMF, sau đó triển khai hệ thống gợi ý hoàn chỉnh\par}
+    \vspace{2cm}
+
+    \begin{tabular}{>{\raggedright\arraybackslash}p{5cm} p{8.5cm}}
+        Đề tài: & Hệ gợi ý phim cá nhân hóa \\
+        Bộ dữ liệu: & MovieLens 1M \\
+        Hướng nghiên cứu: & Recommendation dựa trên lịch sử tương tác người dùng -- phim \\
+        Mô hình so sánh: & Matrix Factorization và NeuMF \\
+        Mô hình triển khai hệ thống: & Matrix Factorization \\
+    \end{tabular}
+
+    \vfill
+    {\large \today \par}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+\section{Giới thiệu dự án}
+
+Dự án được xây dựng với mục tiêu phát triển một hệ gợi ý phim cá nhân hóa cho người dùng dựa trên bộ dữ liệu MovieLens 1M. Toàn bộ quá trình được chia thành hai giai đoạn lớn.
+
+Giai đoạn thứ nhất là giai đoạn nghiên cứu mô hình. Ở giai đoạn này, bộ dữ liệu được phân tích, hai mô hình tiêu biểu được lựa chọn để huấn luyện và so sánh, bao gồm Matrix Factorization đại diện cho nhóm phương pháp học máy truyền thống và NeuMF đại diện cho nhóm học sâu trong bài toán recommendation.
+
+Giai đoạn thứ hai là giai đoạn triển khai hệ thống. Sau khi hoàn tất thực nghiệm, mô hình có kết quả phù hợp hơn được lựa chọn để xây dựng pipeline suy luận, dịch vụ API và giao diện web demo.
+
+Mục tiêu cuối cùng của dự án không chỉ dừng ở việc huấn luyện mô hình, mà còn hướng đến một hệ thống có thể chạy được end-to-end, nhận đầu vào là mã người dùng và trả về danh sách phim gợi ý kèm giải thích ở mức cơ bản.
+
+\section{Bài toán cần giải quyết}
+
+\subsection{Bản chất bài toán}
+
+Bài toán cốt lõi của dự án là gợi ý danh sách phim phù hợp cho từng người dùng. Mỗi người dùng đã có một lịch sử đánh giá đối với một số bộ phim. Từ lịch sử đó, hệ thống cần ước lượng mức độ phù hợp giữa người dùng và những bộ phim mà họ chưa đánh giá, sau đó sắp xếp các bộ phim theo mức độ phù hợp giảm dần để tạo ra danh sách khuyến nghị.
+
+Ở góc độ kỹ thuật, đây là bài toán recommendation dựa trên lịch sử tương tác người dùng -- phim. Trọng tâm của bài toán không nằm ở việc hiểu sâu nội dung phim như cốt truyện, diễn viên hay đạo diễn, mà nằm ở việc học ra quy luật sở thích từ ma trận tương tác giữa người dùng và phim.
+
+\subsection{Lựa chọn hướng tiếp cận}
+
+Với MovieLens 1M, hướng tiếp cận phù hợp nhất là khai thác lịch sử đánh giá của người dùng. Từ đó, hai hướng mô hình được lựa chọn:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item Matrix Factorization, một mô hình nền tảng trong recommendation, mạnh ở dữ liệu dạng user -- item -- rating.
+    \item NeuMF, một mô hình học sâu mở rộng từ Neural Collaborative Filtering, được dùng để so sánh với Matrix Factorization trong cùng điều kiện dữ liệu.
+\end{itemize}
+
+Việc so sánh hai mô hình này giúp trả lời câu hỏi nghiên cứu chính của dự án: với bộ dữ liệu có ít đặc trưng mô tả như MovieLens 1M, mô hình học sâu có thực sự vượt trội hơn mô hình học máy truyền thống hay không.
+
+\section{Phân tích bộ dữ liệu MovieLens 1M}
+
+\subsection{Mô tả chung}
+
+MovieLens 1M là một bộ dữ liệu recommendation kinh điển, bao gồm khoảng một triệu lượt đánh giá phim. Bộ dữ liệu được sử dụng rộng rãi trong các nghiên cứu về collaborative filtering và recommendation vì có quy mô vừa phải, cấu trúc rõ ràng và đủ lớn để thực hiện các thí nghiệm so sánh mô hình.
+
+Trong dự án này, các tệp dữ liệu được đặt tại thư mục:
+
+\begin{center}
+\texttt{data/raw/ml-1m/}
+\end{center}
+
+\subsection{Thành phần dữ liệu}
+
+Bộ dữ liệu gồm ba tệp chính:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item \texttt{users.dat}: thông tin cơ bản của người dùng.
+    \item \texttt{movies.dat}: thông tin cơ bản của phim.
+    \item \texttt{ratings.dat}: lịch sử đánh giá phim của người dùng.
+\end{itemize}
+
+Trong quá trình triển khai, lớp đọc dữ liệu được cài đặt trong module \texttt{src/data/load\_movielens.py}. Dữ liệu được đọc bằng \texttt{pandas}, với bộ cột chuẩn hoá như sau:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item người dùng: \texttt{user\_id, gender, age, occupation, zip\_code}
+    \item phim: \texttt{movie\_id, title, genres}
+    \item đánh giá: \texttt{user\_id, movie\_id, rating, timestamp}
+\end{itemize}
+
+\subsection{Đặc điểm dữ liệu trong dự án}
+
+Kết quả EDA cho thấy:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item số người dùng: 6040
+    \item số phim trong bảng phim: 3883
+    \item số lượt đánh giá: 1{,}000{,}209
+    \item số phim thực sự xuất hiện trong bảng đánh giá: 3706
+    \item mật độ ma trận người dùng -- phim xấp xỉ 4.47\%
+\end{itemize}
+
+Ngoài ra:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item mỗi người dùng có ít nhất 20 đánh giá
+    \item số lượng đánh giá trên mỗi người dùng dao động từ 20 đến 2314
+    \item số lượng đánh giá trên mỗi phim dao động từ 1 đến 3428
+\end{itemize}
+
+Những con số này cho thấy đây là một ma trận tương tác khá thưa, nhưng vẫn đủ tín hiệu để các mô hình collaborative filtering hoạt động hiệu quả.
+
+\subsection{Ưu điểm của bộ dữ liệu}
+
+MovieLens 1M có một số ưu điểm quan trọng đối với dự án:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item dữ liệu đánh giá rõ ràng, trực tiếp và có ý nghĩa mạnh về sở thích
+    \item quy mô vừa đủ để huấn luyện và so sánh nhiều mô hình trong thời gian hợp lý
+    \item có cấu trúc kinh điển cho bài toán recommendation
+    \item thích hợp cho các nghiên cứu dựa trên collaborative filtering và matrix factorization
+\end{itemize}
+
+\subsection{Hạn chế của bộ dữ liệu}
+
+Mặc dù hữu ích, bộ dữ liệu vẫn có nhiều hạn chế nếu xét theo góc nhìn hệ gợi ý hiện đại:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item thông tin mô tả người dùng rất ít, chỉ gồm giới tính, nhóm tuổi, nghề nghiệp và mã vùng
+    \item thông tin mô tả phim cũng rất thô, chủ yếu chỉ có tiêu đề và thể loại
+    \item không có tóm tắt nội dung, diễn viên, đạo diễn, từ khoá, poster hay review
+    \item không có ngữ cảnh sử dụng như thời điểm xem phim, thời lượng xem, thiết bị hay hành vi click
+    \item dữ liệu không phản ánh trực tiếp quá trình tiêu thụ nội dung, mà phản ánh hành vi đánh giá
+\end{itemize}
+
+Vì vậy, bộ dữ liệu này phù hợp với các phương pháp học từ tương tác người dùng -- phim hơn là các hệ thống cần hiểu sâu ngữ nghĩa nội dung.
+
+\section{Tại sao dự án ưu tiên hướng explicit}
+
+\subsection{Phân biệt explicit và implicit}
+
+Trong recommendation, có thể phân biệt hai kiểu tín hiệu chính:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item \textbf{Explicit feedback}: người dùng thể hiện sở thích trực tiếp, ví dụ chấm điểm từ 1 đến 5 sao.
+    \item \textbf{Implicit feedback}: người dùng để lại tín hiệu gián tiếp, ví dụ xem, click, mua hoặc thêm vào danh sách yêu thích.
+\end{itemize}
+
+MovieLens 1M về bản chất là bộ dữ liệu explicit. Mỗi bản ghi đánh giá không chỉ cho biết người dùng đã tương tác với phim, mà còn cho biết mức độ thích hay không thích thông qua giá trị rating.
+
+\subsection{Lý do lựa chọn explicit}
+
+Dự án ưu tiên explicit vì các lý do sau:
+
+\begin{enumerate}[leftmargin=1.5cm]
+    \item \textbf{Phù hợp với bản chất dữ liệu gốc.} MovieLens 1M được xây dựng từ rating thật, nên việc dự đoán rating hoặc dùng rating để xếp hạng là cách khai thác tự nhiên nhất.
+    \item \textbf{Giữ lại thông tin mức độ sở thích.} Nếu chuyển toàn bộ rating thành nhãn dương duy nhất, một đánh giá 1 sao và 5 sao sẽ bị coi như nhau. Điều này làm mất đi thông tin rất quan trọng.
+    \item \textbf{Giảm mức độ giả định trong huấn luyện.} Với implicit, các cặp người dùng -- phim chưa xuất hiện thường phải được xem tạm là mẫu âm thông qua negative sampling. Cách làm này hữu ích, nhưng mang tính giả định nhiều hơn.
+    \item \textbf{Phù hợp với mục tiêu nghiên cứu mô hình.} Dự án cần so sánh một mô hình nền tảng và một mô hình học sâu trong bối cảnh dữ liệu ít đặc trưng. Sử dụng explicit giúp so sánh rõ hơn khả năng học trên rating.
+    \item \textbf{Dễ diễn giải trong hệ thống.} Khi hệ thống gợi ý một bộ phim, có thể diễn giải rằng mô hình dự đoán người dùng sẽ dành điểm cao cho bộ phim đó. Điều này trực quan hơn so với việc chỉ nói rằng xác suất tương tác cao.
+    \item \textbf{Phù hợp với tiêu chí đánh giá hiện tại.} Các thực nghiệm trong dự án sử dụng RMSE và MAE, là những chỉ số trực tiếp cho bài toán rating prediction.
+\end{enumerate}
+
+\subsection{Vì sao không chọn implicit làm hướng chính}
+
+MovieLens 1M vẫn có thể được chuyển sang implicit bằng cách xem mọi tương tác là tín hiệu dương và thực hiện negative sampling trên các phim chưa được đánh giá. Tuy nhiên, cách tiếp cận đó không được chọn làm hướng chính trong dự án vì:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item dữ liệu không phải log hành vi thực tế như click hoặc watch time
+    \item rating thấp và rating cao đều sẽ bị nén lại thành cùng một loại positive nếu xử lý quá đơn giản
+    \item kết quả implicit phụ thuộc mạnh vào cách chọn negative samples
+    \item mục tiêu hiện tại của hệ thống là gợi ý những phim được dự đoán sẽ phù hợp cao, điều này gần với explicit hơn
+\end{itemize}
+
+Do đó, explicit được chọn làm hướng triển khai hệ thống, còn implicit chỉ được xem như một khả năng mở rộng trong tương lai nếu có dữ liệu hành vi phù hợp hơn.
+
+\section{Cơ sở lý thuyết của các mô hình nghiên cứu}
+
+\subsection{Collaborative Filtering}
+
+Collaborative Filtering là nhóm phương pháp học từ lịch sử tương tác giữa người dùng và item. Ý tưởng cốt lõi là: nếu hai người dùng có lịch sử đánh giá giống nhau trong quá khứ, họ có xu hướng thích những item tương tự trong tương lai. Tương tự, nếu hai bộ phim thường được cùng một nhóm người dùng đánh giá cao, chúng có thể được xem là gần nhau về mặt sở thích.
+
+Điểm mạnh của hướng này là không cần hiểu nội dung phim một cách trực tiếp. Mô hình chỉ cần học từ mẫu hành vi tập thể. Với MovieLens 1M, đây là hướng rất phù hợp vì lịch sử rating là tín hiệu mạnh nhất trong dữ liệu.
+
+\subsection{Matrix Factorization}
+
+\subsubsection{Ý tưởng cơ bản}
+
+Matrix Factorization xem ma trận người dùng -- phim là một ma trận thưa và tìm cách phân rã nó thành hai ma trận ẩn:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item một ma trận biểu diễn người dùng
+    \item một ma trận biểu diễn phim
+\end{itemize}
+
+Mỗi người dùng được biểu diễn bằng một vector đặc trưng ẩn, và mỗi bộ phim cũng được biểu diễn bằng một vector đặc trưng ẩn. Điểm dự đoán giữa người dùng \(u\) và phim \(i\) được tính bằng:
+
+\begin{equation}
+\hat{r}_{ui} = \mu + b_u + b_i + p_u^T q_i
+\end{equation}
+
+trong đó:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item \(\mu\) là độ lệch toàn cục
+    \item \(b_u\) là độ lệch của người dùng
+    \item \(b_i\) là độ lệch của phim
+    \item \(p_u\) là vector ẩn của người dùng
+    \item \(q_i\) là vector ẩn của phim
+\end{itemize}
+
+\subsubsection{Ý nghĩa trực quan}
+
+Mô hình không hiểu trực tiếp rằng một chiều nào đó trong vector ẩn là hành động, tâm lý hay hài. Tuy nhiên, trong quá trình học, các chiều ẩn này tự động thích nghi để phản ánh những quy luật sở thích có ích nhất cho việc dự đoán rating.
+
+Ví dụ, nếu một người dùng thường đánh giá cao các phim chiến tranh và tâm lý, vector ẩn của họ sẽ dần dịch chuyển về phía các phim có cấu trúc tương tác tương tự. Khi đó, các phim chưa xem nhưng có vector ẩn gần với vùng sở thích này sẽ nhận điểm dự đoán cao.
+
+\subsubsection{Ưu điểm}
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item phù hợp tự nhiên với dữ liệu dạng user -- item -- rating
+    \item mô hình gọn, dễ huấn luyện, dễ kiểm soát
+    \item hoạt động tốt trên dữ liệu thưa
+    \item kết quả thường rất mạnh dù không cần quá nhiều đặc trưng phụ
+\end{itemize}
+
+\subsubsection{Hạn chế}
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item chỉ học được mẫu tương tác, không hiểu nội dung phim
+    \item khó xử lý người dùng mới hoặc phim mới nếu thiếu tương tác
+    \item nếu dữ liệu phong phú hơn, mô hình tuyến tính có thể bỏ lỡ những quan hệ phức tạp hơn
+\end{itemize}
+
+\subsection{NeuMF}
+
+\subsubsection{Ý tưởng cơ bản}
+
+NeuMF là một mở rộng theo hướng học sâu. Thay vì chỉ dùng tích vô hướng giữa vector người dùng và vector phim, NeuMF sử dụng mạng nơ-ron để học hàm tương tác phi tuyến.
+
+Trong triển khai của dự án, NeuMF gồm hai nhánh:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item một nhánh theo tinh thần factorization
+    \item một nhánh MLP để học quan hệ phi tuyến giữa embedding người dùng và embedding phim
+\end{itemize}
+
+Sau đó hai nhánh được kết hợp để tạo ra điểm dự đoán cuối cùng.
+
+\subsubsection{Ưu điểm}
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item linh hoạt hơn Matrix Factorization
+    \item có khả năng học các quan hệ phức tạp hơn giữa người dùng và phim
+    \item phù hợp khi dữ liệu phong phú hơn hoặc khi muốn mở rộng thêm đặc trưng khác
+\end{itemize}
+
+\subsubsection{Hạn chế trong bối cảnh dự án}
+
+Trong bộ dữ liệu hiện tại, đầu vào chính của NeuMF vẫn chủ yếu là \texttt{user\_id}, \texttt{movie\_id} và rating. Vì dữ liệu không có nhiều đặc trưng mô tả nội dung, lợi thế của học sâu không được phát huy tối đa. Điều này làm cho NeuMF có thể mạnh, nhưng chưa chắc vượt được Matrix Factorization.
+
+\section{Thiết kế module AI}
+
+\subsection{Mục tiêu của module AI}
+
+Module AI được tổ chức để phục vụ ba mục tiêu:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item phân tích dữ liệu
+    \item huấn luyện và đánh giá mô hình
+    \item lưu trữ artifact để cung cấp cho hệ thống suy luận
+\end{itemize}
+
+\subsection{Cấu trúc thư mục}
+
+\renewcommand{\arraystretch}{1.2}
+\small
+\begin{longtable}{>{\raggedright\arraybackslash}p{4.6cm} >{\raggedright\arraybackslash}p{8.8cm}}
+\toprule
+Thư mục / tệp & Vai trò \\
+\midrule
+\endhead
+\path{AI/notebooks/} & Notebook EDA, train MF, train NeuMF và notebook so sánh mô hình \\
+\path{AI/src/data/} & Tách tập train/validation/test và các hàm tiền xử lý cho thực nghiệm \\
+\path{AI/src/features/} & Mã hoá \texttt{user\_id} và \texttt{movie\_id} sang chỉ số số nguyên để đưa vào mô hình \\
+\path{AI/src/models/} & Cài đặt Matrix Factorization, NCF và NeuMF \\
+\path{AI/src/training/} & Vòng huấn luyện, đánh giá, lưu metric và lưu model \\
+\path{AI/src/evaluation/} & Hàm tính metric và gom kết quả so sánh \\
+\path{AI/src/utils/} & Tiện ích dùng chung như cố định random seed \\
+\path{AI/artifacts/models/} & Các model sau huấn luyện \\
+\path{AI/artifacts/metrics/} & Tệp JSON và CSV lưu kết quả thực nghiệm \\
+\path{AI/artifacts/figures/} & Hình minh họa đường cong huấn luyện và so sánh \\
+\bottomrule
+\end{longtable}
+\normalsize
+\renewcommand{\arraystretch}{1.0}
+
+\subsection{Chuẩn bị dữ liệu cho huấn luyện}
+
+Trong thực nghiệm hiện tại, dữ liệu đánh giá được trộn ngẫu nhiên và tách theo tỷ lệ:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item 80\% cho train
+    \item 10\% cho validation
+    \item 10\% cho test
+\end{itemize}
+
+Hàm tách dữ liệu hiện tại được cài đặt trong \texttt{AI/src/data/split.py} thông qua \texttt{random\_split\_explicit}. Ngoài ra, module cũng đã chuẩn bị sẵn một hàm \texttt{leave\_one\_out\_split} theo hướng tách theo thời gian trên từng người dùng, nhưng thực nghiệm chính của dự án vẫn sử dụng random split.
+
+\subsection{Huấn luyện Matrix Factorization}
+
+Mô hình Matrix Factorization được huấn luyện bằng gradient descent dạng tuần tự. Các tham số chính trong lần thực nghiệm hiện tại bao gồm:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item số chiều latent: 32
+    \item learning rate: 0.01
+    \item regularization: 0.02
+    \item số epoch: 20
+\end{itemize}
+
+Trong quá trình huấn luyện:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item mô hình theo dõi RMSE trên validation sau mỗi epoch
+    \item epoch tốt nhất được xác định bằng \texttt{best\_val\_rmse}
+    \item trạng thái tốt nhất được khôi phục trước khi đánh giá trên test
+\end{itemize}
+
+\subsection{Huấn luyện NeuMF}
+
+NeuMF được huấn luyện bằng PyTorch với cấu hình:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item embedding dimension: 32
+    \item dropout: 0.1
+    \item learning rate: 0.001
+    \item weight decay: \(10^{-5}\)
+    \item batch size: 2048
+    \item số epoch: 20
+    \item gradient clipping: 5.0
+\end{itemize}
+
+Tương tự Matrix Factorization, mô hình theo dõi RMSE trên validation sau mỗi epoch và khôi phục trạng thái tốt nhất trước khi đánh giá test.
+
+\section{Thực nghiệm và kết quả}
+
+\subsection{Mục tiêu thực nghiệm}
+
+Thực nghiệm được xây dựng để so sánh hai mô hình trong cùng điều kiện dữ liệu, cùng cách chia tập và cùng bộ chỉ số đánh giá. Mục tiêu là xác định mô hình nào phù hợp hơn để trở thành mô hình nền tảng cho hệ thống recommendation.
+
+\subsection{Chỉ số đánh giá}
+
+Hai chỉ số chính được sử dụng là:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item \textbf{RMSE} (Root Mean Squared Error): nhạy hơn với các sai số lớn
+    \item \textbf{MAE} (Mean Absolute Error): phản ánh sai số tuyệt đối trung bình
+\end{itemize}
+
+RMSE và MAE càng nhỏ thì mô hình càng dự đoán rating tốt.
+
+\subsection{Kết quả thực nghiệm}
+
+\begin{table}[H]
+\centering
+\caption{So sánh kết quả giữa Matrix Factorization và NeuMF}
+\small
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{>{\raggedright\arraybackslash}p{3.5cm}cccccc}
+\toprule
+Mô hình & Best epoch & Val RMSE & Val MAE & Test RMSE & Test MAE & Train rows \\
+\midrule
+Matrix Factorization & 13 & 0.8686 & 0.6811 & 0.8658 & 0.6778 & 800167 \\
+NeuMF & 19 & 0.8744 & 0.6853 & 0.8695 & 0.6814 & 800167 \\
+\bottomrule
+\end{tabular}
+\normalsize
+\renewcommand{\arraystretch}{1.0}
+\end{table}
+
+\subsection{Phân tích kết quả}
+
+Kết quả cho thấy:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item Matrix Factorization cho kết quả tốt hơn NeuMF trên cả validation và test
+    \item khoảng cách giữa hai mô hình không quá lớn, nhưng vẫn đủ rõ để chọn Matrix Factorization làm mô hình triển khai
+    \item NeuMF có cải thiện dần theo số epoch, tuy nhiên chưa vượt Matrix Factorization trong điều kiện dữ liệu hiện tại
+\end{itemize}
+
+Kết quả này củng cố nhận định rằng với bộ dữ liệu có ít đặc trưng mô tả như MovieLens 1M, Matrix Factorization vẫn là lựa chọn rất mạnh và rất phù hợp.
+
+\subsection{Giải thích vì sao Matrix Factorization tốt hơn}
+
+Có ba nguyên nhân chính:
+
+\begin{enumerate}[leftmargin=1.5cm]
+    \item \textbf{Bản chất dữ liệu phù hợp với MF.} Dữ liệu chủ yếu là user -- item -- rating, đúng kiểu dữ liệu mà Matrix Factorization được thiết kế để khai thác.
+    \item \textbf{Dữ liệu ít đặc trưng phụ.} NeuMF mạnh hơn khi có nhiều dấu hiệu bổ sung để học quan hệ phi tuyến. Trong dự án này, thông tin ngoài rating còn khá ít.
+    \item \textbf{MF đủ đơn giản để khái quát tốt.} Khi bài toán không quá giàu tín hiệu đầu vào, một mô hình đơn giản nhưng đúng bản chất dữ liệu thường ổn định hơn một mô hình phức tạp hơn.
+\end{enumerate}
+
+\subsection{Các giới hạn của thực nghiệm}
+
+Mặc dù kết quả hiện tại đủ mạnh để chọn mô hình triển khai, vẫn tồn tại một số giới hạn:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item thực nghiệm hiện tại sử dụng random split thay vì split theo thời gian
+    \item hệ thống chưa đánh giá bằng các chỉ số ranking như Recall@K hay NDCG@K
+    \item chưa thử các hướng baseline khác như item-based collaborative filtering hoặc SVD++
+    \item NeuMF mới chỉ sử dụng ID-based embeddings, chưa kết hợp metadata
+\end{itemize}
+
+Tuy nhiên, trong phạm vi mục tiêu của dự án, các kết quả hiện tại vẫn đủ chặt chẽ để ra quyết định lựa chọn mô hình nền tảng.
+
+\section{Lý do chọn Matrix Factorization cho hệ thống}
+
+Sau thực nghiệm, Matrix Factorization được chọn làm mô hình phục vụ cho hệ thống vì các lý do:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item có kết quả tốt nhất trên tập test
+    \item dễ lưu artifact và dễ suy luận
+    \item chi phí tính toán ở giai đoạn inference thấp
+    \item dễ giải thích hơn trong bối cảnh demo hệ thống
+    \item phù hợp với triết lý xây dựng hệ thống rõ ràng, gọn và dễ mở rộng
+\end{itemize}
+
+Trong dự án hiện tại, model đã huấn luyện được lưu tại:
+
+\begin{center}
+\texttt{AI/artifacts/models/mf\_model.npz}
+\end{center}
+
+Artifact này chứa:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item vector ẩn của người dùng
+    \item vector ẩn của phim
+    \item bias người dùng
+    \item bias phim
+    \item global bias
+    \item ánh xạ giữa ID thật và chỉ số trong ma trận
+\end{itemize}
+
+\section{Thiết kế hệ thống gợi ý}
+
+\subsection{Mục tiêu hệ thống}
+
+Hệ thống cần đáp ứng các chức năng sau:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item tải model Matrix Factorization đã huấn luyện
+    \item nhận đầu vào là \texttt{user\_id}
+    \item trả về top-N phim chưa xem có điểm dự đoán cao nhất
+    \item hỗ trợ fallback cho người dùng chưa có trong mô hình
+    \item cung cấp API và giao diện web để demo
+    \item cung cấp giải thích ngắn gọn cho một recommendation
+\end{itemize}
+
+\subsection{Kiến trúc tổng thể}
+
+Hệ thống được chia thành hai khối lớn:
+
+\begin{enumerate}[leftmargin=1.5cm]
+    \item \textbf{Khối AI} trong thư mục \texttt{AI/}
+    \begin{itemize}[leftmargin=1.2cm]
+        \item huấn luyện mô hình
+        \item đánh giá mô hình
+        \item lưu artifact
+    \end{itemize}
+    \item \textbf{Khối hệ thống} ở top-level
+    \begin{itemize}[leftmargin=1.2cm]
+        \item nạp artifact
+        \item suy luận recommendation
+        \item cung cấp API
+        \item hiển thị giao diện web
+    \end{itemize}
+\end{enumerate}
+
+\subsection{Module runtime}
+
+\subsubsection{Lớp cấu hình}
+
+Module \texttt{src/config.py} quản lý toàn bộ đường dẫn chính của hệ thống:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item đường dẫn đến dữ liệu thô
+    \item đường dẫn đến artifact
+    \item đường dẫn đến model, metric và figure
+\end{itemize}
+
+Thiết kế này giúp hệ thống hoạt động linh hoạt ở cả môi trường local và Colab.
+
+\subsubsection{Lớp nạp dữ liệu}
+
+Module \texttt{src/data/load\_movielens.py} chịu trách nhiệm đọc dữ liệu MovieLens 1M từ các tệp \texttt{.dat} và trả về các DataFrame chuẩn hóa.
+
+\subsubsection{Lớp nạp model}
+
+Module \texttt{src/inference/mf\_loader.py} chịu trách nhiệm:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item đọc tệp \texttt{mf\_model.npz}
+    \item tái tạo lại các ma trận ẩn và bias
+    \item ánh xạ \texttt{user\_id} và \texttt{movie\_id} thật sang chỉ số nội bộ
+    \item tính điểm dự đoán cho một cặp người dùng -- phim
+    \item tính độ tương đồng giữa hai phim trong không gian latent
+\end{itemize}
+
+\subsubsection{Lớp service recommendation}
+
+Module \texttt{src/inference/recommender.py} là lớp trung tâm của phần hệ thống. Module này đảm nhiệm:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item tải model Matrix Factorization
+    \item đọc dữ liệu phim và dữ liệu đánh giá
+    \item xây dựng tập phim đã xem của từng người dùng
+    \item xây dựng bảng xếp hạng phim phổ biến bằng weighted score
+    \item sinh recommendation cá nhân hóa cho người dùng đã biết
+    \item fallback sang phim phổ biến cho người dùng chưa biết
+    \item sinh giải thích cho một recommendation
+\end{itemize}
+
+\subsection{Cơ chế gợi ý}
+
+\subsubsection{Người dùng đã có trong mô hình}
+
+Khi \texttt{user\_id} tồn tại trong model:
+
+\begin{enumerate}[leftmargin=1.5cm]
+    \item lấy danh sách tất cả phim mà model đã biết
+    \item loại bỏ các phim mà người dùng đã đánh giá
+    \item tính điểm dự đoán cho từng phim còn lại
+    \item sắp xếp giảm dần theo điểm dự đoán
+    \item trả về top-K phim đầu tiên
+\end{enumerate}
+
+\subsubsection{Người dùng chưa có trong mô hình}
+
+Khi \texttt{user\_id} không tồn tại trong model, hệ thống chuyển sang fallback:
+
+\begin{enumerate}[leftmargin=1.5cm]
+    \item gom thống kê rating trung bình và số lượt đánh giá cho từng phim
+    \item tính weighted score để tránh ưu tiên các phim có quá ít lượt đánh giá
+    \item sắp xếp theo weighted score
+    \item trả về top-K phim phổ biến nhất
+\end{enumerate}
+
+\subsection{Cơ chế giải thích}
+
+Hệ thống hiện có một endpoint giải thích recommendation ở mức cơ bản. Khi cần giải thích vì sao một phim được gợi ý cho người dùng, service sẽ:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item kiểm tra người dùng có nằm trong mô hình hay không
+    \item tính điểm dự đoán của phim đó nếu người dùng và phim đều có trong model
+    \item tìm một số phim trong lịch sử người dùng có vector ẩn gần với phim đang xét
+    \item tính phần giao nhau giữa thể loại của phim được gợi ý và thể loại của các phim người dùng đã xem
+    \item bổ sung thứ hạng phổ biến của phim trong toàn bộ dữ liệu
+\end{itemize}
+
+Thông tin giải thích này chưa phải là explainability ở mức sâu, nhưng đủ để minh họa logic hoạt động của hệ thống trong bối cảnh demo.
+
+\section{API của hệ thống}
+
+Hệ thống sử dụng FastAPI để cung cấp giao diện lập trình. Các endpoint chính bao gồm:
+
+\renewcommand{\arraystretch}{1.2}
+\small
+\begin{longtable}{>{\raggedright\arraybackslash}p{5.2cm} >{\raggedright\arraybackslash}p{8.2cm}}
+\toprule
+Endpoint & Chức năng \\
+\midrule
+\endhead
+\path{GET /health} & kiểm tra trạng thái hệ thống, số user, số phim và số item trong model \\
+\path{GET /model-info} & trả về thông tin về model đang phục vụ và artifact đang sử dụng \\
+\path{GET /popular?top_k=10} & trả về danh sách phim phổ biến theo weighted score \\
+\path{GET /recommend/{user_id}?top_k=10} & trả về danh sách recommendation cho một người dùng cụ thể \\
+\path{GET /recommend/{user_id}/explain/{movie_id}} & trả về giải thích cho một recommendation cụ thể \\
+\bottomrule
+\end{longtable}
+\normalsize
+\renewcommand{\arraystretch}{1.0}
+
+Schema phản hồi được cài đặt trong \texttt{api/schemas.py}. Tầng API được tổ chức sao cho việc thay thế hoặc mở rộng mô hình trong tương lai có thể thực hiện mà không cần thay đổi lớn ở phía giao diện.
+
+\section{Giao diện web}
+
+Giao diện demo được xây dựng bằng Streamlit. Chức năng chính của giao diện gồm:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item nhập \texttt{user\_id} và \texttt{top\_k}
+    \item xem recommendation cá nhân hóa
+    \item xem danh sách phim phổ biến
+    \item xem metadata của model đang phục vụ
+    \item xem giải thích cho một phim được gợi ý
+\end{itemize}
+
+Việc triển khai giao diện bằng Streamlit giúp dự án có một lớp demo trực quan, dễ sử dụng và đủ phù hợp cho kiểm thử thủ công hoặc trình bày.
+
+\section{Kiểm thử và trạng thái hiện tại}
+
+\subsection{Kiểm thử đã thực hiện}
+
+Ở thời điểm hiện tại, dự án đã có các kiểm tra sau:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item notebook EDA, huấn luyện và so sánh mô hình đã chạy xong
+    \item artifact của Matrix Factorization và NeuMF đã được lưu thành công
+    \item service suy luận đã được chạy thử trực tiếp trên artifact thật
+    \item các module Python chính đã qua kiểm tra cú pháp bằng \texttt{compileall}
+    \item kiểm thử cơ bản cho lớp nạp artifact đã được viết
+\end{itemize}
+
+\subsection{Trạng thái vận hành}
+
+Dự án hiện đã có thể chạy như một hệ thống demo local:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item khởi chạy API bằng Uvicorn
+    \item mở UI bằng Streamlit
+    \item nhập \texttt{user\_id} để nhận recommendation
+    \item xem explain cho phim được gợi ý
+\end{itemize}
+
+Điều này cho thấy dự án đã vượt qua mức nghiên cứu mô hình đơn thuần và đã hình thành một hệ thống recommendation hoàn chỉnh ở mức demo.
+
+\section{Đánh giá tổng thể dự án}
+
+\subsection{Những điểm đã hoàn thành}
+
+Dự án hiện đã hoàn thành các nội dung quan trọng sau:
+
+\begin{enumerate}[leftmargin=1.5cm]
+    \item tổ chức dữ liệu và phân tích đặc điểm của MovieLens 1M
+    \item lựa chọn bài toán recommendation phù hợp
+    \item xây dựng module AI riêng cho huấn luyện và đánh giá
+    \item huấn luyện và so sánh Matrix Factorization với NeuMF
+    \item lựa chọn Matrix Factorization làm mô hình triển khai
+    \item xây dựng module suy luận, API và giao diện web
+    \item hỗ trợ fallback cho người dùng mới
+    \item hỗ trợ giải thích recommendation ở mức cơ bản
+\end{enumerate}
+
+\subsection{Giá trị của dự án}
+
+Giá trị lớn nhất của dự án nằm ở việc kết nối được hai lớp công việc thường tách rời nhau:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item lớp nghiên cứu mô hình với notebook, metric, artifact và so sánh thực nghiệm
+    \item lớp kỹ thuật hệ thống với service, API, UI và cơ chế suy luận
+\end{itemize}
+
+Nhờ đó, dự án không chỉ dừng ở câu hỏi mô hình nào tốt hơn, mà còn thể hiện rõ cách đưa kết quả nghiên cứu vào một hệ thống có thể sử dụng được.
+
+\section{Hướng phát triển tiếp theo}
+
+Mặc dù hệ thống hiện tại đã hoàn chỉnh ở mức demo, vẫn còn nhiều hướng mở rộng:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item thay random split bằng temporal split để gần hơn với bối cảnh thực tế
+    \item bổ sung metric ranking như Recall@K, NDCG@K và Hit Rate@K
+    \item thêm tìm kiếm phim theo tên để cải thiện trải nghiệm giao diện
+    \item xây dựng hồ sơ người dùng dựa trên lịch sử đánh giá
+    \item lưu lịch sử recommendation để theo dõi hành vi sử dụng hệ thống
+    \item kết hợp thêm metadata phim để tạo thành hybrid recommender
+    \item mở rộng sang implicit recommendation khi có dữ liệu hành vi phù hợp hơn
+\end{itemize}
+
+\section{Kết luận}
+
+Dự án đã xây dựng thành công một hệ gợi ý phim dựa trên MovieLens 1M theo hướng recommendation từ lịch sử tương tác người dùng -- phim. Trên phương diện nghiên cứu, Matrix Factorization và NeuMF đã được huấn luyện và so sánh một cách trực tiếp. Kết quả thực nghiệm cho thấy Matrix Factorization là mô hình phù hợp hơn trong bối cảnh dữ liệu ít đặc trưng mô tả và chủ yếu gồm rating.
+
+Việc lựa chọn explicit recommendation làm hướng chính là phù hợp với bản chất của MovieLens 1M, giúp giữ được thông tin về mức độ yêu thích của người dùng và giảm các giả định không cần thiết trong quá trình huấn luyện. Từ kết quả đó, Matrix Factorization đã được đưa vào hệ thống suy luận, kết nối với API và giao diện web để tạo thành một hệ thống recommendation hoàn chỉnh ở mức demo.
+
+Toàn bộ dự án thể hiện một quy trình đầy đủ từ nghiên cứu dữ liệu, xây dựng mô hình, đánh giá thực nghiệm đến triển khai hệ thống. Đây là nền tảng tốt để tiếp tục phát triển thành một hệ gợi ý hoàn chỉnh hơn trong các giai đoạn tiếp theo.
+
+\section*{Tài liệu tham khảo}
+
+\begin{enumerate}[leftmargin=1.2cm]
+    \item GroupLens Research. MovieLens 1M Dataset. \url{https://grouplens.org/datasets/movielens/1m/}
+    \item Y. Koren, R. Bell, C. Volinsky. Matrix Factorization Techniques for Recommender Systems. IEEE Computer, 2009.
+    \item X. He, L. Liao, H. Zhang, L. Nie, X. Hu, T.-S. Chua. Neural Collaborative Filtering. Proceedings of WWW 2017.
+\end{enumerate}
+
+\end{document}
