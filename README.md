@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Movie Recommender Research
 
 Repo này hiện được chia thành hai khối rõ ràng:
@@ -140,4 +139,4 @@ UI hiện hỗ trợ:
 - giải thích ngắn gọn vì sao một phim được gợi ý
 =======
 # movie-recomender-search
->>>>>>> cf89782493fc54a386c94e7e08ff938e64eba022
+
