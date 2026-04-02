@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Movie Recommender Research
 
 Repo này hiện được chia thành hai khối rõ ràng:
@@ -137,3 +138,6 @@ UI hiện hỗ trợ:
 - xem danh sách phim phổ biến
 - xem metadata mô hình đang phục vụ
 - giải thích ngắn gọn vì sao một phim được gợi ý
+=======
+# movie-recomender-search
+>>>>>>> cf89782493fc54a386c94e7e08ff938e64eba022
